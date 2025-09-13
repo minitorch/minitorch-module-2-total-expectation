@@ -4,6 +4,7 @@ from hypothesis.strategies import DataObject, data
 
 import minitorch
 from minitorch import TensorData
+from minitorch.tensor_data import broadcast_index
 
 from .tensor_strategies import indices, tensor_data
 
@@ -80,8 +81,8 @@ def test_index(tensor_data: TensorData) -> None:
 @pytest.mark.task2_1
 @given(data())
 def test_permute(data: DataObject) -> None:
-    td = data.draw(tensor_data())
-    ind = data.draw(indices(td))
+    td = data.draw(tensor_data())  # draw a random TensorData object
+    ind = data.draw(indices(td))  # draw a random valid multidimen index for td
     td_rev = td.permute(*list(reversed(range(td.dims))))
     assert td.index(ind) == td_rev.index(tuple(reversed(ind)))
 
@@ -123,3 +124,44 @@ def test_shape_broadcast() -> None:
 @given(tensor_data())
 def test_string(tensor_data: TensorData) -> None:
     tensor_data.to_string()
+
+
+@pytest.mark.task2_2
+def test_broadcast_index() -> None:
+    import numpy as np
+
+    # Doc example: extra leading dim in big, trailing 1 in small
+    big_shape = np.array([2, 3, 4, 5], dtype=np.int32)
+    big_index = np.array([1, 0, 2, 3], dtype=np.int32)
+    shape = np.array([3, 4, 1], dtype=np.int32)
+    out = np.zeros(len(shape), dtype=np.int32)
+    broadcast_index(big_index, big_shape, shape, out)
+    expected = np.array([0, 2, 0], dtype=np.int32)
+    assert np.all(out == expected)
+
+    # Equal shapes: mix of 1 and >1
+    big_shape = np.array([3, 4, 1], dtype=np.int32)
+    big_index = np.array([0, 2, 0], dtype=np.int32)
+    shape = np.array([3, 4, 1], dtype=np.int32)
+    out = np.zeros(len(shape), dtype=np.int32)
+    broadcast_index(big_index, big_shape, shape, out)
+    expected = np.array([0, 2, 0], dtype=np.int32)
+    assert np.all(out == expected)
+
+    # Middle 1 in small: stretch in middle dim
+    big_shape = np.array([3, 1, 2], dtype=np.int32)
+    big_index = np.array([0, 0, 1], dtype=np.int32)
+    shape = np.array([1, 2], dtype=np.int32)
+    out = np.zeros(len(shape), dtype=np.int32)
+    broadcast_index(big_index, big_shape, shape, out)
+    expected = np.array([0, 1], dtype=np.int32)
+    assert np.all(out == expected)
+
+    # All 1s in small: always map to 0
+    big_shape = np.array([2, 3, 4], dtype=np.int32)
+    big_index = np.array([1, 2, 3], dtype=np.int32)
+    shape = np.array([1, 1, 1], dtype=np.int32)
+    out = np.zeros(len(shape), dtype=np.int32)
+    broadcast_index(big_index, big_shape, shape, out)
+    expected = np.array([0, 0, 0], dtype=np.int32)
+    assert np.all(out == expected)
