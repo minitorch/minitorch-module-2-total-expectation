@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Iterable, List, Tuple
 
@@ -22,7 +23,11 @@ def central_difference(f: Any, *vals: Any, arg: int = 0, epsilon: float = 1e-6) 
     Returns:
         An approximation of $f'_i(x_0, \ldots, x_{n-1})$
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    vals_plus = list(vals)
+    vals_plus[arg] += epsilon
+    vals_minus = list(vals)
+    vals_minus[arg] -= epsilon
+    return (f(*vals_plus) - f(*vals_minus)) / (2 * epsilon)
 
 
 variable_count = 1
@@ -60,7 +65,27 @@ def topological_sort(variable: Variable) -> Iterable[Variable]:
     Returns:
         Non-constant Variables in topological order starting from the right.
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+
+    visited = {variable.unique_id: False}
+    results: List[Variable] = []
+    __visit(variable, visited, results)
+    results.reverse()
+    return results
+
+
+def __visit(
+    variable: Variable, visited: dict[int, bool], results: list[Variable]
+) -> None:
+    if visited[variable.unique_id]:
+        return
+
+    for parent_node in variable.parents:
+        if parent_node.unique_id not in visited:
+            visited[parent_node.unique_id] = False
+        __visit(parent_node, visited, results)
+
+    visited[variable.unique_id] = True
+    results.append(variable)
 
 
 def backpropagate(variable: Variable, deriv: Any) -> None:
@@ -74,7 +99,22 @@ def backpropagate(variable: Variable, deriv: Any) -> None:
 
     No return. Should write to its results to the derivative values of each leaf through `accumulate_derivative`.
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+
+    scalar_derivative_mapping = defaultdict(lambda: 0)
+    scalar_derivative_mapping[
+        variable.unique_id
+    ] = deriv  # dvar/dvar = 1, the derivative of root node is always 1
+    sorted_nodes = topological_sort(variable)
+    for curr_node in sorted_nodes:
+        d_out = scalar_derivative_mapping[curr_node.unique_id]
+        if curr_node.is_leaf():
+            curr_node.accumulate_derivative(
+                scalar_derivative_mapping[curr_node.unique_id]
+            )
+        else:
+            scalars = curr_node.chain_rule(d_out)
+            for (scalar, derivative_from_backward) in scalars:
+                scalar_derivative_mapping[scalar.unique_id] += derivative_from_backward
 
 
 @dataclass
