@@ -65,6 +65,8 @@ def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
 
     """
     # basically just take a bunch of mod, which is // in python, working from the inner (far-right) most index to the outer (far-left). The remainder is pushed to the next index
+    # the idea is think of it as having multiple metric options for cooking, and you have lets say 456ml, and need know how many cups, tbs, tspn etc are needed, you would do the same thing
+    # so the shape indices can really be thought of as different metric holders
     remainder = ordinal
 
     for idx, d in enumerate(reversed(shape)):
@@ -87,13 +89,17 @@ def broadcast_index(
         big_shape : tensor shape of bigger tensor
         shape : tensor shape of smaller tensor
         out_index : multidimensional index of smaller tensor
+
+    raises:
+        IndexingError : if the shapes are incompatible for broadcasting
     """
-    for idx, (big_idx_val, s) in enumerate(
-        zip_longest(reversed(big_index), reversed(shape))
+    for idx, (big_idx_val, s, big_dim) in enumerate(
+        zip_longest(reversed(big_index), reversed(shape), reversed(big_shape))
     ):
         if s is None:
-            # no need to continue, since the smaller shape doesn't even have more dimensions to fill
             break
+        if s != 1 and big_dim != s:
+            raise IndexingError("Incompatible shapes for broadcasting")
         out_index[len(out_index) - idx - 1] = 0 if s == 1 else big_idx_val
 
 

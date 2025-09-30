@@ -165,3 +165,11 @@ def test_broadcast_index() -> None:
     broadcast_index(big_index, big_shape, shape, out)
     expected = np.array([0, 0, 0], dtype=np.int32)
     assert np.all(out == expected)
+
+    # Incompatible dimensions: now raises IndexingError with validation
+    big_shape = np.array([3, 5], dtype=np.int32)
+    big_index = np.array([0, 2], dtype=np.int32)
+    shape = np.array([3, 4], dtype=np.int32)  # Trailing 4 !=5, not 1 → incompatible
+    out = np.zeros(len(shape), dtype=np.int32)
+    with pytest.raises(minitorch.IndexingError):
+        broadcast_index(big_index, big_shape, shape, out)
