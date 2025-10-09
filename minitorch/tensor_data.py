@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import operator
 import random
-from typing import Iterable, Optional, Sequence, Tuple, Union
+from itertools import zip_longest
+from typing import Any, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numba
 import numpy as np
@@ -9,7 +11,7 @@ import numpy.typing as npt
 from numpy import array, float64
 from typing_extensions import TypeAlias
 
-from .operators import prod
+from .operators import map, prod, sum
 
 MAX_DIMS = 32
 
@@ -43,8 +45,10 @@ def index_to_position(index: Index, strides: Strides) -> int:
         Position in storage
     """
 
-    # TODO: Implement for Task 2.1.
-    raise NotImplementedError("Need to implement for Task 2.1")
+    # the general formula given in the tutorial: storage[s1 * index1 + s2 * index2 + s3 * index3 ... ]
+    # should it be offset by -1 cuz zero indexed? Not sure, haven't done it. Answer: if index is zero then it will be handled automatically 0 * anything = 0, 0 + anything = anything.
+    # return int(sum([mul(idx, stride) for idx, stride in zip(index, strides)]))
+    return int(sum(map(operator.mul, index, strides)))
 
 
 def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
@@ -60,8 +64,14 @@ def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
         out_index : return index corresponding to position.
 
     """
-    # TODO: Implement for Task 2.1.
-    raise NotImplementedError("Need to implement for Task 2.1")
+    # basically just take a bunch of mod, which is // in python, working from the inner (far-right) most index to the outer (far-left). The remainder is pushed to the next index
+    # the idea is think of it as having multiple metric options for cooking, and you have lets say 456ml, and need know how many cups, tbs, tspn etc are needed, you would do the same thing
+    # so the shape indices can really be thought of as different metric holders
+    remainder = ordinal
+
+    for idx, d in enumerate(reversed(shape)):
+        out_index[len(shape) - idx - 1] = remainder % d
+        remainder //= d
 
 
 def broadcast_index(
@@ -80,11 +90,17 @@ def broadcast_index(
         shape : tensor shape of smaller tensor
         out_index : multidimensional index of smaller tensor
 
-    Returns:
-        None
+    raises:
+        IndexingError : if the shapes are incompatible for broadcasting
     """
-    # TODO: Implement for Task 2.2.
-    raise NotImplementedError("Need to implement for Task 2.2")
+    for idx, (big_idx_val, s, big_dim) in enumerate(
+        zip_longest(reversed(big_index), reversed(shape), reversed(big_shape))
+    ):
+        if s is None:
+            break
+        if s != 1 and big_dim != s:
+            raise IndexingError("Incompatible shapes for broadcasting")
+        out_index[len(out_index) - idx - 1] = 0 if s == 1 else big_idx_val
 
 
 def shape_broadcast(shape1: UserShape, shape2: UserShape) -> UserShape:
@@ -101,8 +117,29 @@ def shape_broadcast(shape1: UserShape, shape2: UserShape) -> UserShape:
     Raises:
         IndexingError : if cannot broadcast
     """
-    # TODO: Implement for Task 2.2.
-    raise NotImplementedError("Need to implement for Task 2.2")
+    if len(shape1) == 0 or len(shape2) == 0:
+        raise IndexingError("Cannot broadcast given shapes.")
+
+    # Rule 1: Any dimension of size 1 can be zipped with dimensions of size n > 1 by assuming the dimension is copied n times.
+    # Rule 2: Extra dimensions of shape 1 can be added to a tensor to ensure the same number of dimensions with another tensor.
+    # Rule 3: Any extra dimension of size 1 can only be implicitly added on the left side of the shape.
+    out_broadcast_shape: List[Any] = []
+    for (shape_val_a, shape_val_b) in zip_longest(reversed(shape1), reversed(shape2)):
+        if shape_val_a is None:
+            out_broadcast_shape.insert(0, shape_val_b)
+        elif shape_val_b is None:
+            out_broadcast_shape.insert(0, shape_val_a)
+        elif shape_val_a == 1:
+            out_broadcast_shape.insert(0, shape_val_b)
+        elif shape_val_b == 1:
+            out_broadcast_shape.insert(0, shape_val_a)
+        elif shape_val_a == shape_val_b:
+            out_broadcast_shape.insert(0, shape_val_a)
+        else:
+            # if the two shape values a > 0, b > 0, a != b, a != 1, b != 1, then there's no way to broadcast without introducing new values, so raise error
+            raise IndexingError("Cannot broadcast given shapes.")
+
+    return tuple(out_broadcast_shape)
 
 
 def strides_from_shape(shape: UserShape) -> UserStrides:
@@ -188,6 +225,7 @@ class TensorData:
         # Call fast indexing.
         return index_to_position(array(index), self._strides)
 
+    # this basically returns all possible indices in order based on shape of the tensor data object, it uses to_index to create valid indices
     def indices(self) -> Iterable[UserIndex]:
         lshape: Shape = array(self.shape)
         out_index: Index = array(self.shape)
@@ -221,9 +259,10 @@ class TensorData:
         assert list(sorted(order)) == list(
             range(len(self.shape))
         ), f"Must give a position to each dimension. Shape: {self.shape} Order: {order}"
+        new_shape = tuple(self.shape[i] for i in order)
+        new_stride = tuple(self.strides[i] for i in order)
 
-        # TODO: Implement for Task 2.1.
-        raise NotImplementedError("Need to implement for Task 2.1")
+        return TensorData(self._storage, new_shape, new_stride)
 
     def to_string(self) -> str:
         s = ""

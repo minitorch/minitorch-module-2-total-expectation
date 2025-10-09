@@ -1,3 +1,5 @@
+# flake8: noqa: F401
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Optional, Type
@@ -129,6 +131,7 @@ class SimpleOps(TensorOps):
         def ret(a: Tensor, out: Optional[Tensor] = None) -> Tensor:
             if out is None:
                 out = a.zeros(a.shape)
+            # out.tuple() gives out_storage, out_shape and out_strides back, while a.tuple() gives the same but for in_storage, in_shape and in_strides
             f(*out.tuple(), *a.tuple())
             return out
 
@@ -268,8 +271,24 @@ def tensor_map(fn: Callable[[float], float]) -> Any:
         in_shape: Shape,
         in_strides: Strides,
     ) -> None:
-        # TODO: Implement for Task 2.3.
-        raise NotImplementedError("Need to implement for Task 2.3")
+        """
+        Here we already have the broadcasted shape, which is out_shape, don't need to figure it out, i.e. don't need to run shape_broadcast.
+        The strategy is to go from out storage index to in storage index, but to do that we need to go through a few hoops.
+        The following is basically the workflow in the form of <function>: <input> -> <output>
+        to_index: out storage ordinal -> out index
+        broadcast_index: out index -> in index
+        index_to_position: in index -> in storage index
+        """
+        for out_storage_ordinal in range(len(out)):
+            # mutate out_index, i.e. fill it up
+            out_index = np.zeros(len(out_shape), dtype=np.int32)
+            to_index(out_storage_ordinal, out_shape, out_index)
+            # mutate in_index, i.e. fill it up
+            in_index = np.zeros(len(in_shape), dtype=np.int32)
+            broadcast_index(out_index, out_shape, in_shape, in_index)
+            # now we need to convert the in_index to in_storage index
+            in_storage_index = index_to_position(in_index, in_strides)
+            out[out_storage_ordinal] = fn(in_storage[in_storage_index])
 
     return _map
 
@@ -318,8 +337,30 @@ def tensor_zip(fn: Callable[[float, float], float]) -> Any:
         b_shape: Shape,
         b_strides: Strides,
     ) -> None:
-        # TODO: Implement for Task 2.3.
-        raise NotImplementedError("Need to implement for Task 2.3")
+        """
+        Similar to tensor_map, but for two inputs:
+        to_index: out_storage_ordinal -> out_index
+        For a: broadcast_index(out_index, out_shape, a_shape, in_index_a) -> index_to_position(in_index_a, a_strides) -> a_storage pos
+        For b: Same as above for b
+        out[out_storage_ordinal] = fn(a_val, b_val)
+        """
+        for out_storage_ordinal in range(len(out)):
+            # convert out storage ordinal to out tensor index
+            out_index = np.zeros(len(out_shape), dtype=np.int32)
+            to_index(out_storage_ordinal, out_shape, out_index)
+
+            # convert out tensor index to in index a and b respectively
+            in_index_a = np.zeros(len(a_shape), dtype=np.int32)
+            broadcast_index(out_index, out_shape, a_shape, in_index_a)
+            in_index_b = np.zeros(len(b_shape), dtype=np.int32)
+            broadcast_index(out_index, out_shape, b_shape, in_index_b)
+
+            # now we need to convert the in_index_a and in_index_b to in_storage_a and in_storage_b index
+            in_storage_index_a = index_to_position(in_index_a, a_strides)
+            in_storage_index_b = index_to_position(in_index_b, b_strides)
+            out[out_storage_ordinal] = fn(
+                a_storage[in_storage_index_a], b_storage[in_storage_index_b]
+            )
 
     return _zip
 
@@ -354,8 +395,20 @@ def tensor_reduce(fn: Callable[[float, float], float]) -> Any:
         a_strides: Strides,
         reduce_dim: int,
     ) -> None:
-        # TODO: Implement for Task 2.3.
-        raise NotImplementedError("Need to implement for Task 2.3")
+        """
+        The overall strat is to iterate through the a_storage, convert the idx to zero on the reduce dimension, and convert the index back to appropriate idx for out storage.
+        Then apply fn on each of the entries in a_storage with the corresponding accumulated entry in out storage.
+        More specifically:
+        - The current position gives us almost all we need, we just set the reduce dimen to 0 to access the correct position in out_storage.
+        Run it through to_index and set the reduce dimen to 0 and input it into index_to_position.
+        - Just iterate through the storage sequentially and apply fn(out[correct_idx], a_storage[current_pos].
+        """
+        for a_ordinal_idx, a_val in enumerate(a_storage):
+            a_idx = np.zeros(len(a_shape), dtype=np.int32)
+            to_index(a_ordinal_idx, a_shape, a_idx)
+            a_idx[reduce_dim] = 0
+            out_idx = index_to_position(a_idx, out_strides)
+            out[out_idx] = fn(out[out_idx], a_val)
 
     return _reduce
 
