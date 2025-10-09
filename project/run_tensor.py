@@ -32,7 +32,7 @@ class Network(minitorch.Module):
 
         # Layer3: Linear(hidden_layers, 1) -> Sigmoid
         x = self.layer3(x)
-        x = minitorch.sigmoid(x[0])
+        x = minitorch.tensor_functions.Sigmoid.apply(x)
 
         return x
 
@@ -45,7 +45,25 @@ class Linear(minitorch.Module):
         self.out_size = out_size
 
     def forward(self, x):
-        return x @ self.weights.T + self.bias
+        weights_tensor = self.weights.value
+        bias_tensor = self.bias.value
+
+        batch_size = x.shape[0]
+        out_size = weights_tensor.shape[1]
+
+        # Initialize output tensor
+        result = minitorch.zeros((batch_size, out_size))
+
+        # Manual matrix multiplication: y = x @ W^T + b
+        for i in range(batch_size):  # For each sample in batch
+            for j in range(out_size):  # For each output neuron
+                # Compute dot product: x[i] @ weights_tensor[:, j]
+                dot_product = 0
+                for k in range(x.shape[1]):  # For each input feature
+                    dot_product = dot_product + x[i, k] * weights_tensor[k, j]
+                result[i, j] = dot_product + bias_tensor[j]
+
+        return result
 
 
 def default_log_fn(epoch, total_loss, correct, losses):
