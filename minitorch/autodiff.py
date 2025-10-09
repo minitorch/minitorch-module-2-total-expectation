@@ -76,6 +76,10 @@ def topological_sort(variable: Variable) -> Iterable[Variable]:
 def __visit(
     variable: Variable, visited: dict[int, bool], results: list[Variable]
 ) -> None:
+
+    if variable.is_constant():
+        return  # Don't visit constants
+
     if visited[variable.unique_id]:
         return
 
@@ -107,11 +111,11 @@ def backpropagate(variable: Variable, deriv: Any) -> None:
     sorted_nodes = topological_sort(variable)
     for curr_node in sorted_nodes:
         d_out = scalar_derivative_mapping[curr_node.unique_id]
-        if curr_node.is_leaf():
+        if curr_node.is_leaf() and not curr_node.is_constant():
             curr_node.accumulate_derivative(
                 scalar_derivative_mapping[curr_node.unique_id]
             )
-        else:
+        elif not curr_node.is_constant():
             scalars = curr_node.chain_rule(d_out)
             for (scalar, derivative_from_backward) in scalars:
                 scalar_derivative_mapping[scalar.unique_id] += derivative_from_backward
