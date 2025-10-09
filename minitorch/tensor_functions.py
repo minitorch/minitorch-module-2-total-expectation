@@ -119,10 +119,12 @@ class Sigmoid(Function):
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tensor:
         (t1,) = ctx.saved_values
-        a, b = grad_output.f.sigmoid_map(t1), ones(
-            t1.shape
-        ) - grad_output.f.sigmoid_map(t1)
-        return grad_output.f.mul_zip(grad_output.f.mul_zip(a, b), grad_output)
+        s = t1.f.sigmoid_map(t1)
+
+        one = minitorch.tensor([1.0], backend=grad_output.backend)
+        one_minus_s = grad_output.f.add_zip(one, grad_output.f.neg_map(s))
+        local_grad = grad_output.f.mul_zip(s, one_minus_s)
+        return grad_output.f.mul_zip(grad_output, local_grad)
 
 
 class ReLU(Function):
@@ -224,7 +226,6 @@ class Permute(Function):
             permuted_data._storage.tolist(), permuted_data.shape, backend=a.backend
         )
 
-    @staticmethod
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, float]:
         (t1, order) = ctx.saved_values

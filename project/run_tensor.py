@@ -21,20 +21,10 @@ class Network(minitorch.Module):
         self.layer3 = Linear(hidden_layers, 1)
 
     def forward(self, x):
-        # x shape: (batch_size, 2)
-        # Layer1: Linear(2, hidden_layers) -> ReLU
-        x = self.layer1(x)
-        x = x.relu()
-
-        # Layer2: Linear(hidden_layers, hidden_layers) -> ReLU
-        x = self.layer2(x)
-        x = x.relu()
-
-        # Layer3: Linear(hidden_layers, 1) -> Sigmoid
-        x = self.layer3(x)
-        x = minitorch.tensor_functions.Sigmoid.apply(x)
-
-        return x
+        h1 = self.layer1(x).relu()
+        h2 = self.layer2(h1).relu()
+        out = self.layer3(h2).sigmoid()
+        return out
 
 
 class Linear(minitorch.Module):
@@ -45,25 +35,14 @@ class Linear(minitorch.Module):
         self.out_size = out_size
 
     def forward(self, x):
-        weights_tensor = self.weights.value
-        bias_tensor = self.bias.value
+        W = self.weights.value
+        b = self.bias.value
+        N = x.shape[0]
+        prod = (x.view(N, x.shape[1], 1)) * (W.view(1, W.shape[0], W.shape[1]))
+        summed = prod.sum(1)
+        y = summed.view(N, self.out_size)
 
-        batch_size = x.shape[0]
-        out_size = weights_tensor.shape[1]
-
-        # Initialize output tensor
-        result = minitorch.zeros((batch_size, out_size))
-
-        # Manual matrix multiplication: y = x @ W^T + b
-        for i in range(batch_size):  # For each sample in batch
-            for j in range(out_size):  # For each output neuron
-                # Compute dot product: x[i] @ weights_tensor[:, j]
-                dot_product = 0
-                for k in range(x.shape[1]):  # For each input feature
-                    dot_product = dot_product + x[i, k] * weights_tensor[k, j]
-                result[i, j] = dot_product + bias_tensor[j]
-
-        return result
+        return y + b
 
 
 def default_log_fn(epoch, total_loss, correct, losses):
